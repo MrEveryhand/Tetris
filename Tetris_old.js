@@ -1,328 +1,394 @@
-window.onresize = function(){
-    var game_height = (getComputedStyle(document.getElementById('game')).getPropertyValue('height')).replace('px', '')
-    var game_width = game_height * 0.72
-    document.getElementById('game').style.setProperty('width', game_width + 'px')
+var then, now
+var game_time = 0
+var pressed = false
+then = Date.now()
 
-    var cells = document.getElementsByClassName('cells')
-
-    for (var i = 0; i < cells.length; i++) {
-        cells[i].id = 'cell_' + i
-        cells[i].style.height = cells[i].offsetWidth + 'px'
-    }
+var tetris = {
+    field_width : 10,
+    field_height : 20,
+    field_center : function(){
+        return Math.floor(this.field_width / 2)
+    },
+    fieldLength : function(){
+        return this.field_height * this.field_width
+    },
+    level : 1,
+    gamespeed : 10,
+    fps : 20,
+    cillynder: true,
 }
 
-var now
-var then = Date.now()
-var fps = 24
-var fps_interval = 1000 / fps
-var free_cell_color = 'rgb(240, 248, 255)'
-
-var game = {
-    'game_is_over' : false,
-    'game_is_paused' : false,
-    'origin_game_speed' : 12,
-    'game_speed' : 12,
-    'game_time' : 0,
-    'current_figure' : [],
-    'current_figure_id' : null,
-    'cells_color' : [],
-    'game_field' : null,
-    'key_pressed' : false,
-    'shapes': [
-        [[9, 3, 0], [10, 4, 0], [11, 5, 0], [12, 6, 0]], 
-        [[1, 4, 0], [4, 4, 1], [5, 5, 1], [6, 6, 1]], 
-        [[4, 4, 1], [5, 5, 1], [6, 6, 1], [3, 6, 0]], 
-        [[1, 4, 0], [2, 5, 0], [3, 4, 1], [4, 5, 1]], 
-        [[7, 4, 1], [8, 5, 1], [5, 5, 0], [6, 6, 0]], 
-        [[4, 4, 0], [5, 5, 0], [8, 5, 1], [9, 6, 1]], 
-        [[7, 4, 1], [8, 5, 1], [9, 6, 1], [5, 5, 0]],
-    ],
-    'rotation_matrix' : {
-        '3' : {
-            '1': [[3,2,0],[6,1,1],[9,0,2],
-                [2,1,-1],[5,0,0],[8,-1,1],
-                [1,0,-2],[4,-1,-1],[7,-2,0]],
-            '-1': [[7,0,2],[4,-1,1],[1,-2,0],
-                [8,1,1],[5,0,0],[2,-1,-1],
-                [9,2,0],[6,1,-1],[3,0,-2]]
-        },
-        '4' : {
-            '1': [[1,0,0],[8,2,1],[12,1,2],[4,0,0],
-                [3,2,-1],[7,1,0],[11,0,1],[15,-1,2],
-                [2,1,-2],[6,0,-1],[10,-1,0],[14,-2,1],
-                [13,0,0],[5,-1,-2],[9,-2,-1],[16,0,0]],
-            '-1': [[1,0,0],[9,-1,2],[5,-2,1],[4,0,0],
-                [14,1,2],[10,0,1],[6,-1,0],[2,-2,-1],
-                [15,2,1],[11,1,0],[7,0,-1],[3,-1,-2],
-                [13,0,0],[12,2,-1],[8,1,-2],[16,0,0]]
-        },
-    },
-    'CleanUp' : function(g, r){
-        var downfall = false
-        for(var i = g.cells_color.length; i > 0; i--){
-            downfall = ((i / 10) - (i % 10)) == r ? true : downfall
-            if(i > 10){
-                g.cells_color[i] = !!downfall ? g.cells_color[i - 10] : g.cells_color[i]
-            } else {
-                g.cells_color[i] = free_cell_color
-            }            
-        }
-    },
-    'GetALine' : function(){
-        var row = 0
-        var color_streak = 0
-        for(var i = 0; i < this.cells_color.length; i++){
-            if(!(i % 10)){
-                row++
-                color_streak = 0
-            }
-
-            this.cells_color[i] != free_cell_color ? color_streak++ : null
-            color_streak == 10 ? this.CleanUp(this, row) : null
-        }
-    },
-    'cylinder': true,
-}
-
-function InitializeField(g){
-    var div
-
-    for(var i = 0; i < 200; i++){
-        div = document.createElement('div')
-        div.className = 'cells'
-        document.getElementById('gamefield').appendChild(div)
-    }
+var shapes_names = ['o', 'z', 's', 'j', 'l', 't', 'i']
+function newShape(name){
+    switch(name){
+        case 'o': 
+        this.init_coords = [
+            [tetris.field_center(), 0],
+            [tetris.field_center() + 1, 0],
+            [tetris.field_center(), 1],
+            [tetris.field_center() + 1, 1]
+        ]
+        this.state_matrixes = null
     
-    var cells = document.getElementsByClassName('cells')
+        break;
+    case 'z': 
+        this.init_coords = [
+            [tetris.field_center() - 1, 0],
+            [tetris.field_center(), 0],
+            [tetris.field_center(), 1],
+            [tetris.field_center() + 1, 1]
+        ]
+        this.state_matrixes = [
+            [[0, 0], [0, 0], [0, 0], [0, 0]],
+            [[2, 0], [1, 1], [0, 0], [-1, 1]],
+            [[2, 2], [0, 2], [0, 0], [-2, 0]],
+            [[0, 2], [-1, 1], [0, 0], [-1, -1]],
+        ]
     
-    for (var i = 0; i < cells.length; i++) {
-        cells[i].id = 'cell_' + i
-        cells[i].style.height = cells[i].offsetWidth + 'px'
-        g.cells_color.push(getComputedStyle(cells[i]).backgroundColor) 
+        break;
+    case 's': 
+        this.init_coords = [
+            [tetris.field_center(), 0],
+            [tetris.field_center() + 1, 0],
+            [tetris.field_center() - 1, 1],
+            [tetris.field_center(), 1]
+        ]
+        this.state_matrixes = [
+            [[0, 0], [0, 0], [0, 0], [0, 0]],
+            [[1, 1], [0, 2], [1, -1], [0, 0]],
+            [[0, 2], [-2, 2], [2, 0], [0, 0]],
+            [[-1, 1], [-2, 0], [1, 1], [0, 0]],
+        ]
+    
+        break;
+    case 'j': 
+        this.init_coords = [
+            [tetris.field_center() - 1, 0],
+            [tetris.field_center(), 0],
+            [tetris.field_center() + 1, 0],
+            [tetris.field_center() + 1, 1]
+        ]
+        this.state_matrixes = [
+            [[0, 0], [0, 0], [0, 0], [0, 0]],
+            [[2, 0], [1, 1], [0, 2], [-1, 1]],
+            [[2, 2], [0, 2], [-2, 2], [-2, 0]],
+            [[0, 2], [-1, 1], [-2, 0], [-1, -1]],
+        ]
+    
+        break;
+    case 'l': 
+        this.init_coords = [
+            [tetris.field_center() - 1, 0],
+            [tetris.field_center(), 0],
+            [tetris.field_center() + 1, 0],
+            [tetris.field_center() - 1, 1]
+        ]
+        this.state_matrixes = [
+            [[0, 0], [0, 0], [0, 0], [0, 0]],
+            [[2, 0], [1, 1], [0, 2], [1, -1]],
+            [[2, 2], [0, 2], [-2, 2], [2, 0]],
+            [[0, 2], [-1, 1], [-2, 0], [1, 1]],
+        ]
+        break;
+    case 't': 
+        this.init_coords = [
+            [tetris.field_center() - 1, 0],
+            [tetris.field_center(), 0],
+            [tetris.field_center() + 1, 0],
+            [tetris.field_center(), 1]
+        ]
+        this.state_matrixes = [
+            [[0, 0], [0, 0], [0, 0], [0, 0]],
+            [[2, 0], [1, 1], [0, 2], [0, 0]],
+            [[2, 2], [0, 2], [-2, 2], [0, 0]],
+            [[0, 2], [-1, 1], [-2, 0], [0, 0]],
+        ]
+        break;
+    case 'i': 
+        this.init_coords = [
+            [tetris.field_center() - 1, 0],
+            [tetris.field_center(), 0],
+            [tetris.field_center() + 1, 0],
+            [tetris.field_center() + 2, 0]
+        ]
+        this.state_matrixes = [
+            [[0, 0], [0, 0], [0, 0], [0, 0]],
+            [[2, -2], [1, -1], [0, 0], [-1, 1]],
+        ]
+        break;
     }
-
-    g.game_field = cells
 }
 
-function CheckShape(cs, cc, arg_cc, c, arg_c, s, arg_s){
-    var check = true
-    cs.forEach(function(e){
-        check = !e[cc](arg_cc, arg_c) ? false : check
-    })
-    if(!!check){
-        cs.forEach(function(e){
-            !!e[c] ? e[c](arg_c, arg_cc) : null
-        })
-    } else {
-        cs.forEach(function(e){
-            !!e[s] ? e[s](arg_s) : null
-        })
-    }
-}
+function createGame(options){
+    this.options = options
+    this.game_over = false
+    this.pause = false
+    this.free_color = 'rgb(250, 250, 250)'
+    
+    this.field_map = []
 
-document.addEventListener('keypress', function(event) {
-    if(!!game.current_figure && !game.key_pressed && !game.game_is_paused){
-        game.key_pressed = true
-        switch(event.keyCode){
-            case 97:
-                CheckShape(game.current_figure, 'CheckStepAside', game, 'StepAside', -1)
-            break;
-            case 100:
-                CheckShape(game.current_figure, 'CheckStepAside', game, 'StepAside', 1)
-            break;
-            case 115:
-                game.game_speed = Math.floor(game.game_speed / 4)
-                break;
-            // XXX key: E?
-            case 113:
-                if(game.current_figure_id != 3){
-                    CheckShape(game.current_figure, 'CheckRotation', game, 'Rotate', -1)
+    for(var i = 0; i < this.options.fieldLength(); i++){
+        this.field_map.push(this.free_color)
+    }
+
+    this.fieldCleanup = function(){
+        var occupied_counter = 0
+        var row_counter = 0
+        for(var i = 0; i < this.options.fieldLength(); i++){
+            row_counter++
+            this.field_map[i] != this.free_color ? occupied_counter++ : null
+            if(occupied_counter == this.options.field_width){
+                this.field_map.splice(i - this.options.field_width + 1, this.options.field_width)
+                for(var j = 0; j < this.options.field_width; j++){
+                    this.field_map.splice(0, 0, this.free_color)
                 }
-            break;
-            case 101:
-                if(game.current_figure_id != 3){
-                    CheckShape(game.current_figure, 'CheckRotation', game, 'Rotate', 1)
-                }
-            break;
+            } 
+            if(!(row_counter % this.options.field_width)){
+                occupied_counter = 0
+                row_counter = 0
+            } 
         }
     }
-    if(event.keyCode == 112) {
-        game.key_pressed = true
-        game.game_is_paused = !game.game_is_paused ? true : false
-    }
-})
 
-document.addEventListener('keyup', function(event) {
-    if(!!game.key_pressed && !!event.keyCode){
-        game.key_pressed = false
-        game.game_speed = game.origin_game_speed
-    }
-})
-
-function GetIndex(a, b){
-    return String(a) + String(b)
-}
-
-function CreateCell(x, y, color, id){
-    this.id = id
-    this.x = x
-    this.y = y
-    this.color = color
-    this.getY = function(){
-        return !this.y ? '' : this.y
-    }
-
-    this.Stop = function(g){
-        g.cells_color[GetIndex(this.getY(), this.x)] = this.color
-        g.current_figure = []    
-    }
-
-    this.CheckFall = function(g){
-        if(this.y < 19){
-            if(g.cells_color[GetIndex(this.getY() + 1, this.x)] == free_cell_color){
-                return true
-            } else {
-                return false
+    this.checkFreePlaces = function(figure, direction){
+        var free = true
+        figure.forEach((e, i) => {
+            switch(direction){
+                case 'create':
+                    if(this.field_map[getCoords(e[0], e[1])] != this.free_color){
+                        free = false
+                    }
+                    break;
+                case 'down':
+                    if(this.field_map[getCoords(e[0], e[1] + 1)] != this.free_color ||
+                        getCoords(e[0], e[1] + 1) > this.options.fieldLength()){
+                        free = false
+                    }
+                    break;
+                case 'left':
+                    if(!this.options.cillynder){
+                        if(this.field_map[getCoords(e[0] - 1, e[1])] != this.free_color 
+                            || e[0] - 1 < 0){
+                            free = false
+                        }
+                    } else {
+                        var test_x = e[0] - 1 < 0 ? this.options.field_width - 1 : e[0] - 1
+                        if(this.field_map[getCoords(test_x, e[1])] != this.free_color){
+                            free = false
+                        }
+                    }
+                    break;
+                case 'right':
+                    if(!this.options.cillynder){
+                        if(this.field_map[getCoords(e[0] + 1, e[1])] != this.free_color 
+                            || e[0] + 1 >= this.options.field_width){
+                            free = false
+                        }
+                    } else {
+                        var test_x = e[0] + 1 >= this.options.field_width ? 0 : e[0] + 1
+                        console.log(test_x)
+                        if(this.field_map[getCoords(test_x, e[1])] != this.free_color){
+                            free = false
+                        }
+                    }
+                    break;
+                case 'turn_left':
+                    var old_state = this.current_figure.state
+                    var test_state = this.current_figure.state - 1 < 0 ? this.current_figure.shape.state_matrixes.length - 1 :
+                        this.current_figure.state - 1
+                    var test_x = game.current_figure.shape.init_coords[i][0] 
+                        - game.current_figure.shape.state_matrixes[old_state][i][0] 
+                        + game.current_figure.shape.state_matrixes[test_state][i][0]
+                    var test_y = game.current_figure.shape.init_coords[i][1] 
+                        - game.current_figure.shape.state_matrixes[old_state][i][1] 
+                        + game.current_figure.shape.state_matrixes[test_state][i][1]
+                    if(this.field_map[getCoords(test_x, test_y)] != this.free_color ||
+                        this.field_map[getCoords(test_x, test_y)] === null){
+                        free = false
+                    }
+                    break;
+                case 'turn_right':
+                    var old_state = this.current_figure.state
+                    var test_state = this.current_figure.state + 1 >= this.current_figure.shape.state_matrixes.length ? 0 :
+                        this.current_figure.state + 1
+                    var test_x = game.current_figure.shape.init_coords[i][0] 
+                        - game.current_figure.shape.state_matrixes[old_state][i][0] 
+                        + game.current_figure.shape.state_matrixes[test_state][i][0]
+                    var test_y = game.current_figure.shape.init_coords[i][1] 
+                        - game.current_figure.shape.state_matrixes[old_state][i][1] 
+                        + game.current_figure.shape.state_matrixes[test_state][i][1]
+                    if(this.field_map[getCoords(test_x, test_y)] != this.free_color ||
+                         this.field_map[getCoords(test_x, test_y)] === null){
+                        free = false
+                    }
+                    break;
             }
+        })
+        return free
+    }
+
+    this.current_figure = {
+        shape : null,
+        color : null,
+        orig_coordinates : null,
+        coordinates : null,
+        state : null,
+        fall : false,
+    }
+
+    this.generateColor = function(){
+        return 'rgb(' +
+        (Math.floor(Math.random() * 200) + 55) + ',' +
+        (Math.floor(Math.random() * 200) + 55) + ',' +
+        (Math.floor(Math.random() * 200) + 55) + ')'
+    }
+    this.createFigure = function(){
+        var chosen_shape = shapes_names[Math.floor(Math.random() * shapes_names.length)]
+        this.current_figure.shape = new newShape(chosen_shape)
+        this.current_figure.coordinates = this.current_figure.shape.init_coords
+        if(!!this.checkFreePlaces(this.current_figure.coordinates, 'create')){
+            this.current_figure.color = this.generateColor()
+            this.current_figure.state = 0
+            this.current_figure.fall = false
         } else {
-            return false
+            this.game_over = true
         }
     }
 
-    this.CheckStepAside = function(g, sign){
-        var check = sign > 0 ? this.x < 9 : this.x > 0
-        if(check || !!g.cylinder){
-            var next_cell = this.x + sign
-            if(!!g.cylinder){
-                next_cell = next_cell > 9 ? 0 : next_cell < 0 ? 9 : next_cell
-            }
-            if(g.cells_color[GetIndex(this.getY(), next_cell)] == free_cell_color){
-                return true
-            }
-        } else {
-            return false  
-        }
-    }
-
-    this.CheckMatrixRotation = function(gcc, x, y){
-        return (!!gcc[GetIndex(y, x)] && 
-        gcc[GetIndex(y, x)] == free_cell_color)
-    }
-
-    this.CheckRotation = function(g, sign){
-        var size = !g.current_figure_id ? 4 : 3
-        var matrix_cell = g.rotation_matrix[size][sign][this.id - 1]
-        return this.CheckMatrixRotation(g.cells_color, this.x + matrix_cell[1], this.y + matrix_cell[2])
-    }
-
-    this.Rotate = function(sign, g){
-        var size = !g.current_figure_id ? 4 : 3
-        var matrix_cell = g.rotation_matrix[size][sign][this.id - 1]
-        this.id = matrix_cell[0]
-        this.x += matrix_cell[1]
-        this.y += matrix_cell[2]
-    }
-    
     this.Fall = function(){
-        this.y++
+        if(!(game_time % this.options.gamespeed) || !!game.current_figure.fall){
+            if(!!this.checkFreePlaces(this.current_figure.coordinates, 'down')){
+                this.current_figure.coordinates.forEach(e => e[1] = e[1] + 1)
+            } else {
+                this.current_figure.coordinates.forEach(e => this.field_map[getCoords(e[0], e[1])] = this.current_figure.color)
+                this.fieldCleanup()
+                this.createFigure()
+            }
+        }
     }
 
-    this.StepAside = function(sign, g){
-        this.x = this.x + sign
-        if(!!g.cylinder){
-            console.log(this.x)
-            this.x = this.x > 9 ? 0 : this.x < 0 ? 9 : this.x
+    this.Move = function(direction){
+        var side = direction > 0 ? 'right' : 'left'
+        if(!!this.checkFreePlaces(this.current_figure.coordinates, side) && !game.current_figure.fall && !game.pause){
+            this.current_figure.coordinates.forEach(e => {                
+                if(!!this.options.cillynder){
+                    e[0] = e[0] + direction >= this.options.field_width ? 0 : 
+                        e[0] + direction < 0 ? this.options.field_width - 1 : 
+                        e[0] + direction
+                } else {
+                    e[0] = e[0] + direction
+                }
+            })
+        }
+    }
+
+    this.Rotate = function(direction){
+        if(game.current_figure.shape.state_matrixes != null && !game.current_figure.fall && !game.pause){
+            var side = direction > 0 ? 'turn_right' : 'turn_left'
+            if(!!this.checkFreePlaces(this.current_figure.coordinates, side)){
+                var old_state = this.current_figure.state
+                this.current_figure.state = this.current_figure.state + direction
+                this.current_figure.state = this.current_figure.state >= this.current_figure.shape.state_matrixes.length ? 0 :
+                    this.current_figure.state < 0 ? this.current_figure.shape.state_matrixes.length - 1 : this.current_figure.state
+                if(game.current_figure.shape.state_matrixes != null){
+                    game.current_figure.coordinates.forEach((e, i) => {
+                        e[0] = game.current_figure.shape.init_coords[i][0] 
+                            - game.current_figure.shape.state_matrixes[old_state][i][0] 
+                            + game.current_figure.shape.state_matrixes[game.current_figure.state][i][0]
+                        e[1] = game.current_figure.shape.init_coords[i][1] 
+                            - game.current_figure.shape.state_matrixes[old_state][i][1] 
+                            + game.current_figure.shape.state_matrixes[game.current_figure.state][i][1]
+                    })
+                }
+            }
         }
     }
 }
 
-function CheckGameOver(g, ts){
-    ts.forEach(function(e){
-        var ind = !e[2] ? e[1] : GetIndex(e[1], e[2])
-        g.game_is_over = g.cells_color[ind] != free_cell_color ? true : g.game_is_over
-    })
+var game = new createGame(tetris)
+
+function getCoords(x, y){
+    var id = !y ? String(x) : String(y) + String(x)
+    return id
 }
 
-function CreateShape(g){
-    var shape_ind = Math.floor(Math.random() * g.shapes.length)
-    var taken_shape = g.shapes[shape_ind]
-    g.current_figure_id = shape_ind
-    CheckGameOver(g, taken_shape)
-    if(!g.game_is_over){
-        var color = GenerateColor()
-        for(var i = 0; i < taken_shape.length; i++){
-            g.current_figure.push(new CreateCell(taken_shape[i][1], taken_shape[i][2], color, taken_shape[i][0]))
-        }
+function DrawField(){
+    for(var i = 0; i < game.options.fieldLength(); i++){
+        var cell = document.createElement('div')
+        var side_size = document.getElementById('gamefield').
+            offsetWidth / game.options.field_width * 0.995
+        cell.style.width = side_size + 'px'
+        cell.style.height = side_size + 'px'
+        cell.style.backgroundColor = game.free_color
+        cell.style.cssFloat = 'left'
+        cell.id = 'cell_' + i
+        document.getElementById('gamefield').append(cell)
     }
 }
 
-function ChannelPicker(){
-    return Math.ceil(Math.random() * 200) + 55
-}
-
-function GenerateColor(){
-    return 'rgb(' + 
-        ChannelPicker() + ',' +
-        ChannelPicker() + ',' +
-        ChannelPicker() + ')'
-}
-
-function Update(g){
-    if(!g.current_figure.length){
-        CreateShape(g)
+function Update(){
+    if(game.current_figure.coordinates === null){
+        game.createFigure()
     } else {
-        if(!(game.game_time % game.game_speed)){
-            CheckShape(game.current_figure, 'CheckFall', g, 'Fall', null, 'Stop', g)
-        }
-    }
-    g.GetALine()
+        game.Fall()
+    }  
 }
 
-function Draw(g){
-    for (var i = 0; i < game.game_field.length; i++) {
-        game.game_field[i].style.backgroundColor = g.cells_color[i]
+function Draw(){
+    for(var i = 0; i < game.field_map.length; i++){
+        document.getElementById('cell_' + i).style.backgroundColor = !game.pause ? game.field_map[i] : 'white'
     }
-    if(!!g.current_figure.length){
-        g.current_figure.forEach(e => {
-            document.getElementById('cell_' + e.getY() + e.x).style.backgroundColor = e.color
-        })
-    }
-}
-
-function gameLoop(){
-    if(!!game.game_is_over){
-        console.log('GAME OVER!')
-        return
-    }
-    window.requestAnimationFrame(gameLoop)
-    if(!game.game_is_paused){
-        now = Date.now()
-        elapsed = now - then
-        if (elapsed > fps_interval) {
-            then = now - (elapsed % fps)
-            Update(game)
-            Draw(game)
-            game.game_time++
+    if(game.current_figure !== null){
+        for(var i = 0; i < game.current_figure.coordinates.length; i++){
+            var coords = game.current_figure.coordinates[i]
+            document.getElementById('cell_' + getCoords(coords[0], coords[1])).style.backgroundColor = !game.pause ? game.current_figure.color : 'white'
         }
     }
 }
 
-InitializeField(game)
-gameLoop()
+document.addEventListener('keypress', function(e){
+    if(!pressed){
+        pressed = true
+        switch(e.charCode){
+            case 97:
+                game.Move(-1)
+                break;
+            case 100:
+                game.Move(1)
+                break;
+            case 113:
+                game.Rotate(-1)
+                break;
+            case 101:
+                game.Rotate(1)
+                break;
+            case 115:
+                game.current_figure.fall = true
+                break;
+            case 112:
+                game.pause = !game.pause ? true : false
+                break;
+        }
+    }
+})
 
+document.addEventListener('keyup', function(e){
+    if(!!pressed){
+        pressed = false
+    }
+})
 
-// Описание структуры работы приложения:
-//  - Data flow
-//  - Control flow
-//  - Structure
-//  
-// 1) Найти имя автора первого фотографического изображения полученного методом совмещения разных исходных данных - Оскар Рейландер, английский художник-живописец-прерафаэлит, 1856, 30 негативов, "The Two Ways of Life" (1857)
-// 2) Циллиндрический тетрис DONE
-// 3) Дописать Сашин тетрис
-// 4) Рассмотреть и описать вопрос описания тетриса с точки зрения описания структуры работы приложения (см. Список выше) KINDA...
-// 5) Подумать на тему взаимодействия тетриса с окружающей средой -- как выглядит тетрис, как живой организм и в какой среде он живет? DONE
+function GameLoop(){
+    now = Date.now()
+    if(now - then > game.options.fps){
+        then = Date.now()
+        !game.pause ? Update() : null
+        Draw()
+        !game.pause ? game_time++ : null
+    }
+    !game.game_over ? requestAnimationFrame(GameLoop) : console.log('GAME OVER')
+}
 
-// 1) Мгновенная реакция на поворот и потактовое движение - DONE
-// 2) Написать документацию по тетрису (юзерскую, технологическую и функциональную)
-// 3) Дописать Сашин тетрис - 
-// 4) Переписать тетрис
+DrawField()
+GameLoop()
+
